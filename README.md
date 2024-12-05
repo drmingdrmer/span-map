@@ -15,7 +15,7 @@ exclusive, or unbounded.
 ## Usage
 
 ```rust
-use span_map::{SpanMap, Span, LeftBound, RightBound};
+use span_map::SpanMap;
 
 let mut map = SpanMap::<i32, String>::new();
 
