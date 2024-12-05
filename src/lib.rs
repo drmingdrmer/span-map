@@ -100,6 +100,58 @@ where
         set.iter()
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn values_vec<R>(&self, range: R) -> Vec<V>
+    where
+        R: RangeBounds<K>,
+    {
+        self.values(range).into_iter().cloned().collect()
+    }
+
+    /// Returns all unique values associated with spans that overlap the given range.
+    ///
+    /// This method collects all values from sets that are associated with spans
+    /// intersecting the input range. Values are deduplicated and returned in sorted order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use span_map::SpanMap;
+    ///
+    /// let mut map = SpanMap::new();
+    /// map.insert(0..10, "a");
+    /// map.insert(5..15, "b");
+    /// map.insert(12..20, "c");
+    ///
+    /// let values: Vec<_> = map.values(5..12).into_iter().collect();
+    /// assert_eq!(values, vec![&"a", &"b"]);
+    /// ```
+    pub fn values<R>(&self, range: R) -> BTreeSet<&V>
+    where
+        R: RangeBounds<K>,
+    {
+        let span = Span::from_range(range);
+        let mut values = BTreeSet::new();
+
+        let last_less_equal = self.m.range(..=span.left.clone()).next_back();
+        if let Some((b, set)) = last_less_equal {
+            if *b == span.left {
+                // nothing to do
+            } else {
+                values.extend(set.iter());
+            }
+        }
+
+        for (b, set) in self.m.range(span.left..) {
+            if span.right < *b {
+                break;
+            }
+            values.extend(set.iter());
+        }
+
+        values
+    }
+
     /// Inserts a value into all sets associated with spans overlapping the given range.
     ///
     /// Adjacent ranges with the same value are merged into a single range.
@@ -357,6 +409,92 @@ mod tests {
 
         // After point
         assert_eq!(map.get(&6).count(), 0);
+    }
+
+    // ===================== values
+
+    #[test]
+    fn test_values_empty_map() {
+        let map: SpanMap<i32, &str> = SpanMap::new();
+        assert!(map.values_vec(0..10).is_empty());
+    }
+
+    #[test]
+    fn test_values_vec_single_span() {
+        let mut map = SpanMap::new();
+        map.insert(0..10, "a");
+
+        assert_eq!(map.values_vec(-5..5), vec!["a"]);
+        assert_eq!(map.values_vec(0..5), vec!["a"]);
+        assert_eq!(map.values_vec(5..15), vec!["a"]);
+        assert_eq!(map.values_vec(10..15), Vec::<&'static str>::new());
+    }
+
+    #[test]
+    fn test_values_vec_overlapping_spans() {
+        let mut map = SpanMap::new();
+        map.insert(0..10, "a");
+        map.insert(5..15, "b");
+        map.insert(12..20, "c");
+
+        // Test different ranges
+        assert_eq!(map.values_vec(-5..0), Vec::<&'static str>::new());
+        assert_eq!(map.values_vec(0..5), vec!["a"]);
+        assert_eq!(map.values_vec(5..10), vec!["a", "b"]);
+        assert_eq!(map.values_vec(10..12), vec!["b"]);
+        assert_eq!(map.values_vec(12..15), vec!["b", "c"]);
+        assert_eq!(map.values_vec(15..20), vec!["c"]);
+        assert_eq!(map.values_vec(20..25), Vec::<&'static str>::new());
+
+        // Test ranges that span multiple sections
+        assert_eq!(map.values_vec(0..20), vec!["a", "b", "c"]);
+        assert_eq!(map.values_vec(5..15), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_values_vec_multiple_values_same_span() {
+        let mut map = SpanMap::new();
+        map.insert(0..10, "a");
+        map.insert(0..10, "b");
+        map.insert(5..15, "c");
+
+        assert_eq!(map.values_vec(0..5), vec!["a", "b"]);
+        assert_eq!(map.values_vec(5..10), vec!["a", "b", "c"]);
+        assert_eq!(map.values_vec(10..15), vec!["c"]);
+    }
+
+    #[test]
+    fn test_values_vec_point_ranges() {
+        let mut map = SpanMap::new();
+        map.insert(0..10, "a");
+        map.insert(5..15, "b");
+
+        // Test single point ranges
+        assert_eq!(map.values_vec(5..=5), vec!["a", "b"]);
+        assert_eq!(map.values_vec(0..=0), vec!["a"]);
+        assert_eq!(map.values_vec(15..=15), Vec::<&'static str>::new());
+    }
+
+    #[test]
+    fn test_values_vec_inclusive_ranges() {
+        let mut map = SpanMap::new();
+        map.insert(0..=10, "a");
+        map.insert(5..=15, "b");
+
+        assert_eq!(map.values_vec(0..=5), vec!["a", "b"]);
+        assert_eq!(map.values_vec(10..=15), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_values_vec_unbounded_ranges() {
+        let mut map = SpanMap::new();
+        map.insert(0..10, "a");
+        map.insert(20..30, "b");
+
+        use std::ops::Bound::*;
+        assert_eq!(map.values_vec((Unbounded, Included(5))), vec!["a"]);
+        assert_eq!(map.values_vec((Included(15), Unbounded)), vec!["b"]);
+        assert_eq!(map.values_vec(..), vec!["a", "b"]);
     }
 
     // ===================== insert
