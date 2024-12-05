@@ -2,6 +2,13 @@
 name = "span-map"
 version = "0.1.0"
 edition = "2021"
+description = "A data structure for efficiently managing sets of values over spans/ranges"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/drmingdrmer/span-map"
+documentation = "https://docs.rs/span-map"
+readme = "README.md"
+keywords = ["span", "range", "map", "interval", "data-structure"]
+categories = ["data-structures", "algorithms"]
 
 [dependencies]
 
